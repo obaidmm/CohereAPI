@@ -1,1 +1,1 @@
-# NSBECohereAPI
+# CohereAPI
