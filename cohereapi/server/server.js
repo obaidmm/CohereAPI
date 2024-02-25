@@ -1,42 +1,40 @@
+// This would be in your server-side Node.js code
 const express = require('express');
-const fetch = require('node-fetch'); // or any other HTTP client
+const { CohereClient } = require('cohere-ai');
 const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
 app.use(bodyParser.json());
+
+const cohere = new CohereClient({
+  token: process.env.COHERE_API_KEY, // Store your API key securely
+});
 
 app.post('/chat', async (req, res) => {
   const { message, chatHistory } = req.body;
 
   try {
-    // Here, we send the user's message and the chat history to Cohere's API
-    const cohereResponse = await fetch('https://api.cohere.ai/cohere/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.COHERE_API_KEY}` // stores in environment variable
-      },
-      body: JSON.stringify({
-        messages: chatHistory.concat([{ text: message, role: 'user' }]),
-      })
+    const stream = await cohere.chatStream({
+      model: "command",
+      message: message,
+      chatHistory: chatHistory,
+      promptTruncation: "AUTO",
+      citationQuality: "accurate",
+      connectors: [{"id":"web-search"}],
+      documents: []
     });
 
-    const cohereData = await cohereResponse.json();
-
-    if (cohereResponse.ok) {
-      // Send the response from Cohere back to the front-end
-      res.json({ message: cohereData.choices[0].message });
-    } else {
-      res.status(500).json({ error: cohereData.error });
+    for await (const chat of stream) {
+      if (chat.eventType === "text-generation") {
+        return res.json({ message: chat.text });
+      }
     }
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error:', error);
+    res.status(500).send('Error communicating with Cohere API');
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
